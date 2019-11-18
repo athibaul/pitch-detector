@@ -1,5 +1,7 @@
 """
 Create filters for sampled digital signal.
+
+author: Alexis THIBAULT
 """
 
 
