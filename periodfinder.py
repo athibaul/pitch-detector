@@ -16,7 +16,7 @@ def _root(x1, x2, y1, y2):
 
 class PeriodFinder:
     def __init__(self, fs=44100, filt=None,
-                 n_periods=2):
+                 n_periods=5):
         """
         Parameters
         ----------
