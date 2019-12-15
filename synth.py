@@ -91,7 +91,7 @@ class OneNoteSynth:
     def get_data(self, frames):
         data = self._create_wave_data(frames) * self._envelope.get_gain(frames)
         self.is_alive = self._envelope.is_alive
-        return data
+        return data * self._volume
     
     def _create_wave_data(self, frames):
         tt = self._t + np.arange(frames)/SAMPLERATE
@@ -162,6 +162,9 @@ class PolyphonicSynth:
 BASS_ENVELOPE = Envelope(1e-4, 0.1, 0.8, 1e-3)
 BASS_SYNTH = PolyphonicSynth(SAWTOOTH_WAVE, BASS_ENVELOPE, max_polyphony=1)
 
+ORGAN_ENVELOPE = Envelope(0.05, 0.5, 0.8, 0.2)
+ORGAN_SYNTH = PolyphonicSynth(TRIANGLE_WAVE, ORGAN_ENVELOPE)
+
     
 if __name__ == '__main__':    
     import sounddevice as sd
@@ -169,7 +172,7 @@ if __name__ == '__main__':
     import time
     
     
-    synth = BASS_SYNTH
+    synth = ORGAN_SYNTH
     
     def callback(indata, outdata, frames, time, status):
         outdata[:, 0] = synth.get_data(frames)
