@@ -5,6 +5,7 @@ Created on Sun Dec 15 16:45:23 2019
 @author: User
 """
 import collections
+import threading
 
 import numpy as np
 
@@ -64,14 +65,14 @@ class EnvelopeGain:
         self._t = 0
     
 
-DEFAULT_ENVELOPE = Envelope(1e-3, 0.0, 1.0, 1e-3)
+DEFAULT_ENVELOPE = Envelope(1e-3, 1e-3, 1.0, 1e-3)
 TEST_ENVELOPE = Envelope(0.1, 0.2, 0.3, 0.4)
 
 
 SAWTOOTH_WAVE = lambda x: 2*x-1
 TRIANGLE_WAVE = lambda x: 4*abs(x-1/2)-1
 SINE_WAVE = lambda x: np.sin(2*np.pi*x)
-SQUARE_WAVE = lambda x: (x<1/2) - (x>1/2)
+SQUARE_WAVE = lambda x: 1.0*(x<1/2) - 1.0*(x>1/2)
 
 def freq_of_note(note):
     return 440 * 2**((note-69)/12)
@@ -90,10 +91,12 @@ class OneNoteSynth:
     def get_data(self, frames):
         data = self._create_wave_data(frames) * self._envelope.get_gain(frames)
         self.is_alive = self._envelope.is_alive
+        return data
     
     def _create_wave_data(self, frames):
         tt = self._t + np.arange(frames)/SAMPLERATE
         tt_normalized = (tt * self._frequency) % 1
+        self._t += frames/SAMPLERATE
         return self._waveform(tt_normalized)
     
     def note_off(self):
@@ -102,10 +105,13 @@ class OneNoteSynth:
     
     
 class PolyphonicSynth:
-    def __init__(self, waveform, envelope):
+    def __init__(self, waveform, envelope, max_polyphony=10, gain=0.1):
         self._waveform, self._envelope = waveform, envelope
-        self.note_synths = dict()
+        self.note_synths = collections.OrderedDict()
         self.note_synths_dying = []
+        self.max_polyphony = max_polyphony
+        self.gain = gain
+        self._lock = threading.Lock()
         
     def receive(self, msg):
         if msg.type == 'note_on' and msg.velocity > 0:
@@ -116,35 +122,61 @@ class PolyphonicSynth:
         self.bury_dead_notes()
     
     def note_on(self, note, velocity):
-        self.note_off(note) # Don't let the same note play twice at the same time
+        # Don't let the same note play twice at the same time.
+        self.note_off(note) 
+        
+        # Don't let more than `max_polyphony` notes
+        # play at the same time.
+        if len(self.note_synths) >= self.max_polyphony:
+            note_to_kill = next(iter(self.note_synths))
+            self.note_off(note_to_kill)
+            
         note_synth = OneNoteSynth(freq_of_note(note), velocity/128,
                                   self._waveform, self._envelope)
-        self.note_synths[note] = note_synth
+        with self._lock:
+            self.note_synths[note] = note_synth
         
     def note_off(self, note):
-        try:
-            prev_note = self.note_synths.pop(note)
-            prev_note.note_off()
-            self.note_synths_dying.append(prev_note)
-        except KeyError:
-            pass
+        with self._lock:
+            try:
+                prev_note = self.note_synths.pop(note)
+                prev_note.note_off()
+                self.note_synths_dying.append(prev_note)
+            except KeyError:
+                pass
             
     def get_data(self, frames):
-        data = np.zeros(frames)
-        for note_synth in self.note_synths.values():
-            data += note_synth.get_data(frames)
-        for note_synth in self.note_synths_dying:
-            data += note_synth.get_data(frames)
-        return data
+        with self._lock:
+            datas = [note_synth.get_data(frames) for note_synth in self.note_synths.values()] \
+             + [note_synth.get_data(frames) for note_synth in self.note_synths_dying]
+            return np.sum(datas, axis=0) * self.gain
     
     def bury_dead_notes(self):
-        self.note_synths_dying = list(filter(
-                lambda note_synth: note_synth.is_alive,
-                self.note_synths_dying))
+        with self._lock:
+            self.note_synths_dying = list(filter(
+                    lambda note_synth: note_synth.is_alive,
+                    self.note_synths_dying))
 
 
+
+BASS_ENVELOPE = Envelope(1e-4, 0.1, 0.8, 1e-3)
+BASS_SYNTH = PolyphonicSynth(SAWTOOTH_WAVE, BASS_ENVELOPE, max_polyphony=1)
 
     
+if __name__ == '__main__':    
+    import sounddevice as sd
+    import mido
+    import time
     
-
+    
+    synth = BASS_SYNTH
+    
+    def callback(indata, outdata, frames, time, status):
+        outdata[:, 0] = synth.get_data(frames)
+        
+    with sd.Stream(samplerate=SAMPLERATE, channels=1, callback=callback):
+        with mido.open_input() as inport:
+            inport.callback = synth.receive
+            while not inport.closed:
+                time.sleep(0.1)
     
