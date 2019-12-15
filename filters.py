@@ -47,10 +47,10 @@ def bandpass_filter(f_low=50, f_high=1000, order=6, fs=44100):
 
 def bandpass_and_integrate(f_low=50, f_high=1000, order=6, fs=44100):
     """Create a filter that is a combination of a band-pass of order `order`
-    and a low-pass of order 1.
+    and a low-pass of order 2.
     """
     sos_1 = ssi.iirfilter(order, (f_low, f_high), btype='band', fs=fs, output='sos')
-    sos_2 = ssi.iirfilter(1, f_low, btype='low', fs=fs, output='sos')
+    sos_2 = ssi.iirfilter(2, f_low, btype='low', fs=fs, output='sos')
     sos = np.concatenate((sos_1, sos_2), axis=0)
     return Filter(sos)
 
