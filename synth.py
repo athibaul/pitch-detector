@@ -113,6 +113,8 @@ class PolyphonicSynth:
         self.gain = gain
         self._lock = threading.Lock()
         
+        self._t = 0.0
+        
     def receive(self, msg):
         if msg.type == 'note_on' and msg.velocity > 0:
             self.note_on(msg.note, msg.velocity)
@@ -120,6 +122,9 @@ class PolyphonicSynth:
             or msg.type == 'note_off':
             self.note_off(msg.note)
         self.bury_dead_notes()
+        
+    def get_time(self):
+        return self._t
     
     def note_on(self, note, velocity):
         # Don't let the same note play twice at the same time.
@@ -149,6 +154,7 @@ class PolyphonicSynth:
         with self._lock:
             datas = [note_synth.get_data(frames) for note_synth in self.note_synths.values()] \
              + [note_synth.get_data(frames) for note_synth in self.note_synths_dying]
+            self._t += frames/SAMPLERATE
             return np.sum(datas, axis=0) * self.gain
     
     def bury_dead_notes(self):
@@ -165,7 +171,9 @@ BASS_SYNTH = PolyphonicSynth(SAWTOOTH_WAVE, BASS_ENVELOPE, max_polyphony=1)
 ORGAN_ENVELOPE = Envelope(0.05, 0.5, 0.8, 0.2)
 ORGAN_SYNTH = PolyphonicSynth(TRIANGLE_WAVE, ORGAN_ENVELOPE)
 
-    
+NO_ENVELOPE = Envelope(1e-3, 1e-3, 1.0, 1e-3)
+CHIPTUNE = PolyphonicSynth(SQUARE_WAVE, NO_ENVELOPE)
+
 if __name__ == '__main__':    
     import sounddevice as sd
     import mido
