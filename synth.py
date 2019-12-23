@@ -81,6 +81,7 @@ OFFSET_TRI_02 = offset_triangle(0.2)
 OFFSET_TRI_01 = offset_triangle(0.1)
 
 def freq_of_note(note):
+    """Convert MIDI note number to frequency in Hertz."""
     return 440 * 2**((note-69)/12)
 
 
@@ -139,11 +140,13 @@ class OneNoteSynth(Synth):
     def note_off(self):
         self._envelope.note_off()
 
+class PolyphonicSynth(Synth, metaclass=abc.ABCMeta):
 
+    @abc.abstractmethod
+    def create_note(self, note_number, velocity):
+        pass
 
-class PolyphonicSynth(Synth):
-    def __init__(self, waveform, envelope, max_polyphony=10, gain=0.1):
-        self._waveform, self._envelope = waveform, envelope
+    def __init__(self, max_polyphony=10, gain=0.1):
         self.note_synths = collections.OrderedDict()
         self.note_synths_dying = []
         self.max_polyphony = max_polyphony
@@ -178,8 +181,8 @@ class PolyphonicSynth(Synth):
             note_to_kill = next(iter(self.note_synths))
             self.note_off(note_to_kill)
 
-        note_synth = OneNoteSynth(freq_of_note(note), velocity/128,
-                                  self._waveform, self._envelope)
+        note_synth = self.create_note(note, velocity)
+
         with self._lock:
             self.note_synths[note] = note_synth
 
@@ -205,16 +208,33 @@ class PolyphonicSynth(Synth):
                     lambda note_synth: note_synth.is_alive,
                     self.note_synths_dying))
 
+class SimplePolySynth(PolyphonicSynth):
+    def __init__(self, waveform, envelope, **kwargs):
+        super().__init__(**kwargs)
+        self._waveform, self._envelope = waveform, envelope
+
+    def create_note(self, note_number, velocity):
+        return OneNoteSynth(freq_of_note(note_number), velocity/128,
+                                  self._waveform, self._envelope)
+
+
+class FMSynth(PolyphonicSynth):
+    """Synth with one level of Frequency Modulation."""
+    def __init__(self, envelope=DEFAULT_ENVELOPE,
+                 envelope_fm=DEFAULT_ENVELOPE,
+                 **kwargs):
+        super().__init__(SINE_WAVE, envelope, **kwargs)
+
 
 
 BASS_ENVELOPE = Envelope(1e-4, 0.1, 0.8, 1e-3)
-BASS_SYNTH = PolyphonicSynth(SAWTOOTH_WAVE, BASS_ENVELOPE, max_polyphony=1)
+BASS_SYNTH = SimplePolySynth(SAWTOOTH_WAVE, BASS_ENVELOPE, max_polyphony=1)
 
 ORGAN_ENVELOPE = Envelope(0.05, 0.5, 0.8, 0.2)
-ORGAN_SYNTH = PolyphonicSynth(OFFSET_TRI_01, ORGAN_ENVELOPE)
+ORGAN_SYNTH = SimplePolySynth(OFFSET_TRI_01, ORGAN_ENVELOPE)
 
 NO_ENVELOPE = Envelope(1e-3, 1e-3, 1.0, 1e-3)
-CHIPTUNE = PolyphonicSynth(SQUARE_WAVE, NO_ENVELOPE)
+CHIPTUNE = SimplePolySynth(SQUARE_WAVE, NO_ENVELOPE)
 
 
 if __name__ == '__main__':
