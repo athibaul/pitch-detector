@@ -69,5 +69,5 @@ def play_midi_file(filename, synth):
 if __name__ == '__main__':
     filename = 'Dejected_Groose_piano.mid'
     print("Playing", filename, "with ORGAN_SYNTH")
-    play_midi_file(filename, ORGAN_SYNTH)
+    play_midi_file(filename, SIMPLE_FM_SYNTH)
 

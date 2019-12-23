@@ -155,6 +155,11 @@ class PolyphonicSynth(Synth, metaclass=abc.ABCMeta):
 
         self._t = 0.0
 
+    def all_note_synths(self):
+        with self._lock:
+            yield from iter(self.note_synths.values())
+            yield from iter(self.note_synths_dying)
+
     def receive(self, msg):
         if msg.type == 'note_on' and msg.velocity > 0:
             self.note_on(msg.note, msg.velocity)
@@ -196,11 +201,9 @@ class PolyphonicSynth(Synth, metaclass=abc.ABCMeta):
                 pass
 
     def get_data(self, frames):
-        with self._lock:
-            datas = [note_synth.get_data(frames) for note_synth in self.note_synths.values()] \
-             + [note_synth.get_data(frames) for note_synth in self.note_synths_dying]
-            self._t += frames/SAMPLERATE
-            return np.sum(datas, axis=0) * self.gain
+        datas = [note_synth.get_data(frames) for note_synth in self.all_note_synths()]
+        self._t += frames/SAMPLERATE
+        return np.sum(datas, axis=0) * self.gain
 
     def bury_dead_notes(self):
         with self._lock:
@@ -222,8 +225,21 @@ class FMSynth(PolyphonicSynth):
     """Synth with one level of Frequency Modulation."""
     def __init__(self, envelope=DEFAULT_ENVELOPE,
                  envelope_fm=DEFAULT_ENVELOPE,
+                 fm_strength=1.0,
                  **kwargs):
-        super().__init__(SINE_WAVE, envelope, **kwargs)
+        super().__init__(**kwargs)
+        self._envelope = envelope
+        self._envelope_fm = envelope_fm
+        self._fm_strength = fm_strength
+
+    def set_fm_strength(self, fm_strength):
+        self._fm_strength = fm_strength
+
+    def create_note(self, note_number, velocity):
+        freq = freq_of_note(note_number)
+        fm_synth = OneNoteSynth(freq, velocity/128, SINE_WAVE, self._envelope_fm)
+        return OneNoteSynth(freq, velocity/128, SINE_WAVE, self._envelope,
+                 fm=fm_synth, fm_strength=self._fm_strength)
 
 
 
@@ -236,6 +252,7 @@ ORGAN_SYNTH = SimplePolySynth(OFFSET_TRI_01, ORGAN_ENVELOPE)
 NO_ENVELOPE = Envelope(1e-3, 1e-3, 1.0, 1e-3)
 CHIPTUNE = SimplePolySynth(SQUARE_WAVE, NO_ENVELOPE)
 
+SIMPLE_FM_SYNTH = FMSynth(ORGAN_ENVELOPE, ORGAN_ENVELOPE, fm_strength=5.0)
 
 if __name__ == '__main__':
     import sounddevice as sd
