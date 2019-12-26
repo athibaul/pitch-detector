@@ -161,6 +161,7 @@ class PolyphonicSynth(Synth, metaclass=abc.ABCMeta):
             yield from iter(self.note_synths_dying)
 
     def receive(self, msg):
+        print(msg)
         if msg.type == 'note_on' and msg.velocity > 0:
             self.note_on(msg.note, msg.velocity)
         elif msg.type == 'note_on' and msg.velocity == 0 \
@@ -237,7 +238,7 @@ class FMSynth(PolyphonicSynth):
     def receive(self, msg):
         super().receive(msg)
         if msg.type == 'control_change' and msg.control == 7:
-            self.set_fm_strength(msg.value/100.0 * 10.0)
+            self.set_fm_strength(msg.value/128.0 * 15.0)
 
     def set_fm_strength(self, fm_strength):
         self._fm_strength = fm_strength
