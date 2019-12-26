@@ -226,18 +226,29 @@ class FMSynth(PolyphonicSynth):
     def __init__(self, envelope=DEFAULT_ENVELOPE,
                  envelope_fm=DEFAULT_ENVELOPE,
                  fm_strength=1.0,
+                 velocity_influences_fm=True,
                  **kwargs):
         super().__init__(**kwargs)
         self._envelope = envelope
         self._envelope_fm = envelope_fm
         self._fm_strength = fm_strength
+        self._velocity_influences_fm = velocity_influences_fm
+
+    def receive(self, msg):
+        super().receive(msg)
+        if msg.type == 'control_change' and msg.control == 7:
+            self.set_fm_strength(msg.value/100.0 * 10.0)
 
     def set_fm_strength(self, fm_strength):
         self._fm_strength = fm_strength
+        for synth in self.all_note_synths():
+            synth.set_fm_strength(fm_strength)
 
     def create_note(self, note_number, velocity):
         freq = freq_of_note(note_number)
-        fm_synth = OneNoteSynth(freq, velocity/128, SINE_WAVE, self._envelope_fm)
+        child_volume = velocity/128 if self._velocity_influences_fm else 1.0
+        fm_synth = OneNoteSynth(freq, child_volume,
+                                SINE_WAVE, self._envelope_fm)
         return OneNoteSynth(freq, velocity/128, SINE_WAVE, self._envelope,
                  fm=fm_synth, fm_strength=self._fm_strength)
 
@@ -252,7 +263,10 @@ ORGAN_SYNTH = SimplePolySynth(OFFSET_TRI_01, ORGAN_ENVELOPE)
 NO_ENVELOPE = Envelope(1e-3, 1e-3, 1.0, 1e-3)
 CHIPTUNE = SimplePolySynth(SQUARE_WAVE, NO_ENVELOPE)
 
-SIMPLE_FM_SYNTH = FMSynth(ORGAN_ENVELOPE, ORGAN_ENVELOPE, fm_strength=5.0)
+SIMPLE_FM_SYNTH = FMSynth(ORGAN_ENVELOPE,
+                          NO_ENVELOPE,
+                          fm_strength=5.0,
+                          velocity_influences_fm=False)
 
 if __name__ == '__main__':
     import sounddevice as sd
@@ -260,7 +274,7 @@ if __name__ == '__main__':
     import time
 
 
-    synth = ORGAN_SYNTH
+    synth = SIMPLE_FM_SYNTH
 
     def callback(indata, outdata, frames, time, status):
         outdata[:, 0] = synth.get_data(frames)
